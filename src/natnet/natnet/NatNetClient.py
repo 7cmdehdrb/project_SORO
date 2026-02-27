@@ -26,8 +26,17 @@ import struct
 from threading import Thread
 import copy
 import time
+import rclpy
+from rclpy.time import Time
+from geometry_msgs.msg import PoseArray, Pose, Point
+from geometry_msgs.msg import Quaternion as ROSQuaternion
+from geometry_msgs.msg import Vector3 as ROSVector3
+from builtin_interfaces.msg import Duration as ROSDuration
+from visualization_msgs.msg import MarkerArray, Marker
+from std_msgs.msg import *
 from natnet.DataDescriptions import DataDescriptions
-from natnet.MoCapData import MoCapData
+import natnet.MoCapData as MoCapData
+# from natnet.MoCapData import MoCapData
 
 
 def trace(*args):
@@ -125,6 +134,9 @@ class NatNetClient:
 
         self.stop_threads = False
 
+        # ================================
+        self._unlabeled_marker_array: MarkerArray = None
+
     # Client/server message ids
     NAT_CONNECT = 0
     NAT_SERVERINFO = 1
@@ -139,6 +151,10 @@ class NatNetClient:
     NAT_KEEPALIVE = 10
     NAT_UNRECOGNIZED_REQUEST = 100
     NAT_UNDEFINED = 999999.9999
+
+    @property
+    def unlabeled_marker_array(self):
+        return self._unlabeled_marker_array
 
     def set_client_address(self, local_ip_address):
         if not self.__is_locked:
@@ -655,7 +671,7 @@ class NatNetClient:
                 offset = len(data)
                 return offset, marker_set_data
 
-            trace_mf("Marker Count   : ", marker_count)
+            # trace_mf("Marker Count   : ", marker_count)
             for j in range(0, marker_count):
                 if len(data) < (offset + 12):
                     print("WARNING: Early return.  Out of data at marker ", j, " of ", marker_count)  # type: ignore  # noqa E501
@@ -668,16 +684,6 @@ class NatNetClient:
                 marker_data.add_pos(pos)
             marker_set_data.add_marker_data(marker_data)
 
-        # Unlabeled markers count (4 bytes)
-        # unlabeled_markers_count = int.from_bytes(data[offset:offset+4], byteorder='little',  signed=True) #type: ignore  # noqa E501
-        # offset += 4
-        # trace_mf("Unlabeled Marker Count:", unlabeled_markers_count)
-
-        # for i in range(0, unlabeled_markers_count):
-        #    pos = Vector3.unpack(data[offset:offset+12])
-        #    offset += 12
-        #    trace_mf("\tMarker %3.1d: [%3.2f,%3.2f,%3.2f]" % (i, pos[0], pos[1], pos[2])) #type: ignore  # noqa E501
-        #    marker_set_data.add_unlabeled_marker(pos)
         return offset, marker_set_data
 
     def __unpack_rigid_body_data(self, data, packet_size, major, minor):
@@ -729,6 +735,9 @@ class NatNetClient:
 
     def __unpack_labeled_marker_data(self, data, packet_size, major, minor):
         labeled_marker_data = MoCapData.LabeledMarkerData()
+
+        ma = MarkerArray()
+
         offset = 0
         # Labeled markers (Version 2.3 and later)
         labeled_marker_count = 0
@@ -774,6 +783,34 @@ class NatNetClient:
 
                 labeled_marker = MoCapData.LabeledMarker(tmp_id, pos, size, param, residual)  # type: ignore  # noqa E501
                 labeled_marker_data.add_labeled_marker(labeled_marker)
+
+                if residual > 0.7:
+                    continue
+
+                marker = Marker(
+                    header=Header(
+                        stamp=Time().to_msg(),
+                        frame_id="opti_world"
+                    ),
+                    ns="labeled_markers",
+                    id=int(marker_id),
+                    type=Marker.SPHERE,
+                    action=Marker.ADD,
+                    pose=Pose(
+                        position=Point(x=pos[0], y=pos[1], z=pos[2]),
+                        orientation=ROSQuaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+                    ),
+                    scale=ROSVector3(x=size[0], y=size[0], z=size[0]),
+                    color=ColorRGBA(r=1.0, g=0.0, b=0.0, a=0.7),
+                    lifetime=ROSDuration(sec=0, nanosec=100000000) # 0.1 seconds
+                )
+
+                # print(f"Marker ID: {marker_id}, Position: ({pos[0]:.4f}, {pos[1]:.4f}, {pos[2]:.4f}), Residual: {residual:.4f}")
+
+                ma.markers.append(marker)
+
+
+        self._unlabeled_marker_array = ma
 
         return offset, labeled_marker_data
 

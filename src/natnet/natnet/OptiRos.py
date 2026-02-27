@@ -111,9 +111,10 @@ def request_data_descriptions(s_client: NatNetClient):
 
 
 class NatNetClientNode(Node):
-    def __init__(self):
+    def __init__(self, client: NatNetClient):
         super().__init__("natnet_client_node")
 
+        self._client = client
         self._markers = MarkerArray()
 
         self._marker_array_publisher = self.create_publisher(
@@ -121,9 +122,15 @@ class NatNetClientNode(Node):
             self.get_name() + "/marker_array",
             qos_profile=qos_profile_system_default,
         )
+        self._unlabeled_publisher = self.create_publisher(
+            MarkerArray,
+            self.get_name() + "/unlabeled",
+            qos_profile=qos_profile_system_default
+        )
 
         self._hz = 30.0  # Frequency of publishing markers
         self._timer = self.create_timer(self._hz, self._publish_marker_array)
+        # self._timer2 = self.create_timer(self._hz, self._publish_unlabeled_pose_array)
 
     def _get_pose_msg(
         self,
@@ -179,6 +186,15 @@ class NatNetClientNode(Node):
         if self._marker_array_publisher.get_subscription_count() > 0:
             self._marker_array_publisher.publish(self._markers)
 
+        if self._unlabeled_publisher.get_subscription_count() > 0:
+            msg: MarkerArray = self._client.unlabeled_marker_array
+            if msg is None:
+                self.get_logger().warn(f"No Unlabeled MarkerArray Message")
+                return
+
+            self._unlabeled_publisher.publish(msg)
+
+
     def receive_rigid_body_frame(
         self,
         new_id: int,
@@ -201,20 +217,20 @@ class NatNetClientNode(Node):
 def main(arg=None):
     rclpy.init(args=arg)
 
-    node = NatNetClientNode()
+    streaming_client = NatNetClient()
+    node = NatNetClientNode(client=streaming_client)
 
     # Spin in a separate thread
     thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
     thread.start()
 
     optionsDict = {
-        "clientAddress": "192.168.50.251",
-        "serverAddress": "192.168.50.7",
+        "clientAddress": "192.168.50.30",
+        "serverAddress": "192.168.50.45",
         "use_multicast": False,
         "stream_type": "d",
     }
 
-    streaming_client = NatNetClient()
 
     # streaming_client.new_frame_with_data_listener = receive_new_frame_with_data  # type ignore # noqa E501
     streaming_client.new_frame_listener = receive_new_frame
