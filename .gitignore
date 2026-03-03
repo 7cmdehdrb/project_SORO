@@ -100,6 +100,9 @@
 *.3dm
 *.max
 
+# Project datasets
+data/
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -361,3 +364,5 @@ AMENT_IGNORE
 *.zip
 
 # End of https://www.toptal.com/developers/gitignore/api/python,c++,images,video,ros,ros2
+
+*.db3
