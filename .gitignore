@@ -101,7 +101,9 @@
 *.max
 
 # Project datasets
-data/
+data/**
+!data/**/
+!data/**/*.csv
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
