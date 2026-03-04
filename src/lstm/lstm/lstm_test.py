@@ -210,6 +210,29 @@ class LSTMPredictorNode(Node):
             marker_array = MarkerArray()
             current_time = self.get_clock().now().to_msg()
 
+            marker_array.markers.append(
+                Marker(
+                    header=Header(
+                        stamp=self.get_clock().now().to_msg(),
+                        frame_id="opti_world",
+                    ),
+                    ns="predicted_markers",
+                    id=999,  # Temporary marker for debugging
+                    type=Marker.SPHERE,
+                    action=Marker.ADD,
+                    pose=Pose(
+                        position=Point(
+                            x=float(self.init_point[0]),
+                            y=float(self.init_point[1]),
+                            z=float(self.init_point[2]),
+                        )
+                    ),
+                    scale=Vector3(x=0.01, y=0.01, z=0.01),
+                    color=ColorRGBA(r=0.0, g=0.0, b=1.0, a=0.4),
+                    lifetime=BuiltinDuration(sec=0, nanosec=100000000),
+                )
+            )
+
             for i, marker_id in enumerate(self.marker_ids):
                 if pred_valid[i] > self.confidence_threshold:
 
