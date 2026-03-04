@@ -5,7 +5,7 @@ from matplotlib.widgets import Slider
 from mpl_toolkits.mplot3d import Axes3D
 
 # CSV 파일 읽기
-csv_file = "/home/min/project_SORO/data/rosbag2_2026_03_03-16_14_02/tracked_markers_cleaned.csv"
+csv_file = "/home/min/project_SORO/data/rosbag2_2026_03_03-16_14_02/new_merged_data.csv"
 df = pd.read_csv(csv_file)
 
 print(f"Loaded data from: {csv_file}")

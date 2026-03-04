@@ -272,13 +272,135 @@ def load_and_process_markers(marker_file, n_expected_markers=6):
         tracked_positions, valid_mask, n_expected=n_expected_markers
     )
 
+    # n_expected_markers보다 많은 경우, invalid 비율이 높은 순으로 제거
+    if len(keep_markers) > n_expected_markers:
+        print(
+            f"\n검출된 마커 수({len(keep_markers)})가 예상 수({n_expected_markers})보다 많습니다."
+        )
+        print("Invalid 비율이 높은 마커부터 제거합니다...")
+
+        # 각 마커의 invalid 비율 계산
+        marker_invalid_ratios = []
+        for marker_idx in keep_markers:
+            total_frames = len(valid_mask[marker_idx])
+            valid_frames = valid_mask[marker_idx].sum()
+            invalid_ratio = 1.0 - (valid_frames / total_frames)
+            marker_invalid_ratios.append(
+                (marker_idx, invalid_ratio, valid_frames, total_frames)
+            )
+            print(
+                f"  마커 {marker_idx}: {total_frames - valid_frames}/{total_frames} invalid ({invalid_ratio*100:.1f}%)"
+            )
+
+        # invalid 비율로 정렬 (낮은 것이 좋은 것)
+        marker_invalid_ratios.sort(key=lambda x: x[1])
+
+        # 상위 n_expected_markers개만 유지
+        keep_markers = [
+            idx for idx, _, _, _ in marker_invalid_ratios[:n_expected_markers]
+        ]
+        removed_markers = [
+            (idx, ratio)
+            for idx, ratio, _, _ in marker_invalid_ratios[n_expected_markers:]
+        ]
+
+        print(f"\n최종 유지할 마커: {sorted(keep_markers)}")
+        print(f"제거된 마커 (invalid 비율 높음): {[idx for idx, _ in removed_markers]}")
+
     # 아웃라이어 제거
     filtered_positions = tracked_positions[
         [3 * i + j for i in keep_markers for j in range(3)], :
     ]
     filtered_valid_mask = valid_mask[keep_markers, :]
 
-    print(f"\n최종 마커 수: {len(keep_markers)}")
+    print(f"\n최종 마커 수: {len(keep_markers)} (예상: {n_expected_markers})")
+
+    # 마커 인덱스 재배치: 0번은 움직임이 가장 적은 원점, 그 다음은 체인 형태로 가까운 순서
+    print("\n마커 인덱스 재배치 시작...")
+
+    # 각 마커의 움직임 계산 (유효한 프레임에서의 위치 표준편차)
+    n_final_markers = len(keep_markers)
+    movements = []
+    for i in range(n_final_markers):
+        valid_frames = filtered_valid_mask[i, :]
+        if valid_frames.sum() == 0:
+            movements.append(float("inf"))
+            continue
+
+        x = filtered_positions[3 * i + 0, valid_frames]
+        y = filtered_positions[3 * i + 1, valid_frames]
+        z = filtered_positions[3 * i + 2, valid_frames]
+
+        # 위치 변화량의 표준편차 합계 (움직임의 지표)
+        movement = np.std(x) + np.std(y) + np.std(z)
+        movements.append(movement)
+
+    # 0번: 가장 움직임이 적은 마커 (원점)
+    origin_idx = np.argmin(movements)
+    print(
+        f"원점 마커 (0번): 기존 인덱스 {origin_idx}, 움직임: {movements[origin_idx]:.6f}"
+    )
+
+    # 체인 형태로 인덱스 재배치
+    new_order = [origin_idx]
+    remaining = [i for i in range(n_final_markers) if i != origin_idx]
+
+    while remaining:
+        # 마지막으로 추가된 마커의 평균 위치
+        last_idx = new_order[-1]
+        last_valid = filtered_valid_mask[last_idx, :]
+        last_pos = np.array(
+            [
+                filtered_positions[3 * last_idx + 0, last_valid].mean(),
+                filtered_positions[3 * last_idx + 1, last_valid].mean(),
+                filtered_positions[3 * last_idx + 2, last_valid].mean(),
+            ]
+        )
+
+        # 남은 마커들 중 가장 가까운 마커 찾기
+        min_dist = float("inf")
+        closest_idx = None
+
+        for idx in remaining:
+            valid_frames = filtered_valid_mask[idx, :]
+            if valid_frames.sum() == 0:
+                continue
+
+            pos = np.array(
+                [
+                    filtered_positions[3 * idx + 0, valid_frames].mean(),
+                    filtered_positions[3 * idx + 1, valid_frames].mean(),
+                    filtered_positions[3 * idx + 2, valid_frames].mean(),
+                ]
+            )
+
+            dist = np.linalg.norm(pos - last_pos)
+            if dist < min_dist:
+                min_dist = dist
+                closest_idx = idx
+
+        if closest_idx is not None:
+            new_order.append(closest_idx)
+            remaining.remove(closest_idx)
+            print(
+                f"마커 {len(new_order)-1}번: 기존 인덱스 {closest_idx}, 거리: {min_dist:.6f}m"
+            )
+        else:
+            # 남은 마커가 있지만 유효한 프레임이 없는 경우
+            print(
+                f"경고: 남은 마커 {remaining}는 유효한 프레임이 없어 마지막에 추가됩니다."
+            )
+            new_order.extend(remaining)
+            break
+
+    # 새로운 순서로 재배치
+    filtered_positions = filtered_positions[
+        [3 * i + j for i in new_order for j in range(3)], :
+    ]
+    filtered_valid_mask = filtered_valid_mask[new_order, :]
+
+    print(f"\n마커 인덱스 재배치 완료")
+    print(f"재배치 순서 (기존 인덱스): {new_order}")
 
     return times, filtered_positions, filtered_valid_mask
 
@@ -400,17 +522,17 @@ def process_and_merge_data(
 
 if __name__ == "__main__":
     # 파일 경로 설정
-    base_path = Path("/home/min/project_SORO/data/rosbag2_2026_03_03-16_24_27")
+    base_path = Path("/home/min/project_SORO/data/rosbag2_2026_03_03-16_14_02")
     marker_file = base_path / "natnet_client_node_unlabeled.csv"
     arduino_file = base_path / "arduino_data.csv"
-    output_file = base_path / "merged_data.csv"
+    output_file = base_path / "new_merged_data.csv"
 
     # 처리 및 병합 실행
     merged_data = process_and_merge_data(
         marker_file=marker_file,
         arduino_file=arduino_file,
         output_file=output_file,
-        tolerance=0.1,  # 0.1초 이내의 시간만 매칭
+        tolerance=0.05,  # 0.05초 이내의 시간만 매칭
         n_expected_markers=6,  # 예상되는 정상 마커 수
     )
 
