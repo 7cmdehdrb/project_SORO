@@ -29,24 +29,45 @@ def fit_circle(positions):
     return np.array([cx, cy]), r, (min_theta, max_theta)
 
 
-def plot_circle(ax, center, radius, thetas, **kwargs):
+def plot_circle(center, radius, thetas, origins, **kwargs):
     """Plot a circle given its center and radius."""
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111)
+
     theta = np.linspace(thetas[0], thetas[1], 300)
     x = center[0] + radius * np.cos(theta)
     y = center[1] + radius * np.sin(theta)
+
+    ax.scatter(
+        origins[:, 0],
+        origins[:, 1],
+        color="black",
+        alpha=1.0,
+        label="Original Positions",
+        s=0.3,
+    )
     ax.plot(
         x,
         y,
         **kwargs,
     )
+    ax.scatter(0.0, 0.0, color="black", label="Base (0,0)", marker="x", s=50)
     ax.scatter(
         center[0],
         center[1],
         color=kwargs.get("color", "black"),
         label="circle center",
-        marker="o",
-        s=30,
+        marker="x",
+        s=50,
     )
+
+    ax.set_aspect("equal")
+    ax.set_title("Fitted Circle to EEF Trajectory", fontsize=14)
+    ax.set_xlabel("X position", fontsize=12)
+    ax.set_ylabel("Y position", fontsize=12)
+    ax.grid(True, linestyle="--", alpha=0.7)
+    ax.legend(loc="upper right")
+    plt.show()
 
 
 def plot_prpr_workspace_new_origin(
@@ -283,10 +304,18 @@ print(
 # first_circle_thetas = (first_circle_thetas[1] - 0.3, first_circle_thetas[1])
 # second_circle_thetas = (second_circle_thetas[1] - 0.3, second_circle_thetas[1])
 
-
-plot_prpr_workspace_new_origin(
-    P1_vec=first_circle_center,
-    R1_params=(first_circle_radius, first_circle_thetas),
-    P2_vec=second_circle_center,
-    R2_params=(second_circle_radius - first_circle_radius, second_circle_thetas),
+plot_circle(
+    center=second_circle_center,
+    radius=second_circle_radius,
+    thetas=(0.0, 2 * np.pi),  # second_circle_thetas,
+    origins=positions,
+    color="green",
+    label="Approximated Circle",
 )
+
+# plot_prpr_workspace_new_origin(
+#     P1_vec=first_circle_center,
+#     R1_params=(first_circle_radius, first_circle_thetas),
+#     P2_vec=second_circle_center,
+#     R2_params=(second_circle_radius - first_circle_radius, second_circle_thetas),
+# )
